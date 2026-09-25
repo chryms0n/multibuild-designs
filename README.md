@@ -20,8 +20,14 @@ Printed on a Bambu Lab A1 in PLA.
 ## Usage
 
 ```bash
-pip install build123d
+pip install -r requirements.txt
 python models/multiboard/<part>.py
 ```
 
-Each model script writes its files to `exports/`.
+Each model script writes its STL/STEP files and a preview image (`<part>.png`) to `exports/`.
+
+## Parts
+
+| Part | Script | Print files |
+| --- | --- | --- |
+| Caliper holder (150 mm vernier caliper, one MultiBoard large hole + anti-rotation peg) | `models/multiboard/caliper_holder.py` | `exports/caliper_holder.stl`, `exports/caliper_holder_peg.stl` |
