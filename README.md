@@ -30,4 +30,4 @@ Each model script writes its STL/STEP files and a preview image (`<part>.png`) t
 
 | Part | Script | Print files |
 | --- | --- | --- |
-| Caliper holder (150 mm vernier caliper, one MultiBoard large hole + anti-rotation peg) | `models/multiboard/caliper_holder.py` | `exports/caliper_holder.stl`, `exports/caliper_holder_peg.stl` |
+| Caliper holder (150 mm vernier caliper, hangs below one MultiBoard large hole; flush coin-slot bolt + anti-rotation peg) | `models/multiboard/caliper_holder.py` | `exports/caliper_holder.stl`, `exports/caliper_holder_bolt.stl`, `exports/caliper_holder_peg.stl` |
