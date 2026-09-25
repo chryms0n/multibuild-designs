@@ -62,3 +62,11 @@ def render(path, views, figsize=(16, 7), suptitle=None):
     fig.tight_layout()
     fig.savefig(path, dpi=90)
     plt.close(fig)
+
+
+def report(name, part):
+    """Hand-over check: single valid solid, bounding box, volume."""
+    bb = part.bounding_box()
+    print(f"{name}: solids={len(part.solids())} valid={part.is_valid} "
+          f"bbox={bb.size.X:.2f} x {bb.size.Y:.2f} x {bb.size.Z:.2f} mm "
+          f"volume={part.volume / 1000:.2f} cm^3 (~{part.volume * 1.24e-3:.1f} g PLA solid)")

@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT))
 from build123d import *  # noqa: E402
 
 from lib import multiboard as mb  # noqa: E402
-from lib.preview import render  # noqa: E402
+from lib.preview import render, report  # noqa: E402
 
 # --- Caliper (estimated from the user's photos via the caliper's own cm scale) --
 BEAM_W = 16.0
@@ -55,36 +55,16 @@ FORK_H = 25.0                # right arm; the left arm is notched for the wheel
 CORNER_R = 6.0               # plate corner radius
 TAB_GROOVE_W = TAB_W + 2 * 1.0
 LIP = 3.0                    # front lips reach this far over the slot (45 deg underside)
-BOLT_HOLE_D = mb.large_bolt_clearance_d(0.0)  # test print: +0.5/side was too loose
-
-# --- Bolt (flat head, flush in the plate) -------------------------------------
-FLANGE_D = 28.0
-FLANGE_T = 4.0
-UNDER_HEAD = 3.0             # plate material between the flange and the tile
-CB_D = FLANGE_D + 2 * 0.4    # counterbore for the flange
-CB_DEPTH = FLANGE_T + 0.2    # flange ends slightly below the plate front
-THREAD_L = UNDER_HEAD + mb.TILE_THICKNESS + 3.5  # 3.5 past the tile, well short of the wall
-THREAD_CLR = 0.2             # radial; first print of our own thread, adjust after testing
-COIN_SLOT_W = 2.8            # euro coins are 1.67-2.33 thick
-COIN_SLOT_DEPTH = 2.2
-
-# --- Peg ----------------------------------------------------------------------
-PEG_D = mb.SMALL_HOLE_D - 2 * 0.3   # part that goes into the tile's small hole
-PEG_OUT = 4.0                # length sticking into the tile's small hole
-PEG_IN = 3.0                 # length pressed into the plate
-PEG_SOCKET_D = 5.6           # test print: 4.6 printed smaller than the tile's small hole
-PEG_IN_D = PEG_SOCKET_D - 0.2  # press fit (printed holes come out undersize)
-PEG_CHAMFER = 0.6
 PEG_X, PEG_Y = mb.SMALL_HOLE_OFFSET
 
 # --- Derived ------------------------------------------------------------------
-PLATE_T = UNDER_HEAD + CB_DEPTH
+PLATE_T = mb.MOUNT_PLATE_T
 SLOT_W = BEAM_W + 2 * FIT
 OUT_W = SLOT_W + 2 * WALL
 BACK_Z = PLATE_T + BEAM_STANDOFF                       # beam rests against this face
 LIP_Z = BACK_Z + BEAM_T + 2.5                          # inner face of the lips
 FRONT_Z = LIP_Z + WALL
-FORK_TOP = -(CB_D / 2 + 1.5)                           # fork stays below the flange
+FORK_TOP = -(mb.CB_D / 2 + 1.5)                           # fork stays below the flange
 FORK_BOT = FORK_TOP - FORK_H
 PLATE_BOT = FORK_BOT
 PLATE_TOP = PLATE_ABOVE
@@ -126,43 +106,11 @@ def build_holder() -> Part:
     # groove through the back wall for the depth-rod guide tab
     wz = BACK_Z - WALL / 2
     holder -= Pos(0, FORK_TOP - FORK_H / 2, wz) * Box(TAB_GROOVE_W, FORK_H + 2, WALL + 0.02)
-    holder -= Pos(0, 0, PLATE_T / 2) * Cylinder(BOLT_HOLE_D / 2, PLATE_T + 1)
-    holder -= Pos(0, 0, PLATE_T - CB_DEPTH / 2 + 0.01) * Cylinder(CB_D / 2, CB_DEPTH + 0.02)
-    holder -= Pos(PEG_X, PEG_Y, PEG_IN / 2 - 0.01) * Cylinder(PEG_SOCKET_D / 2, PEG_IN + 0.02)
+    holder = mb.cut_mount(holder, 0, 0, (PEG_X, PEG_Y))
     # soften the outer plate edges parallel to Z
     edges = holder.edges().filter_by(Axis.Z).filter_by(
         lambda e: abs(abs(e.center().X) - PLATE_W / 2) < 1e-6)
     return fillet(edges, CORNER_R)
-
-
-def build_peg() -> Part:
-    """Printed standing on end; shown here in its installed position."""
-    tip = Pos(0, 0, -PEG_OUT / 2) * Cylinder(PEG_D / 2, PEG_OUT)
-    tip = chamfer(tip.edges().filter_by(GeomType.CIRCLE).sort_by(Axis.Z)[0], PEG_CHAMFER)
-    base = Pos(0, 0, PEG_IN / 2) * Cylinder(PEG_IN_D / 2, PEG_IN)
-    base = chamfer(base.edges().filter_by(GeomType.CIRCLE).sort_by(Axis.Z)[-1], 0.4)
-    return Pos(PEG_X, PEG_Y, 0) * (tip + base)
-
-
-def build_bolt() -> Part:
-    """Print orientation: slotted face on the bed (z = 0), thread pointing up."""
-    flange = Cylinder(FLANGE_D / 2, FLANGE_T, align=(Align.CENTER, Align.CENTER, Align.MIN))
-    flange = chamfer(flange.edges().sort_by(Axis.Z)[-1], 0.6)   # top rim, meets the counterbore floor
-    flange -= Pos(0, 0, COIN_SLOT_DEPTH / 2 - 0.01) * Box(FLANGE_D + 2, COIN_SLOT_W, COIN_SLOT_DEPTH + 0.02)
-    thread = Pos(0, 0, FLANGE_T - 0.01) * mb.large_thread(THREAD_L + 0.01, THREAD_CLR)
-    return flange + thread
-
-
-def installed(bolt: Part) -> Part:
-    """Bolt as fitted: flange in the counterbore, thread towards the wall."""
-    return Pos(0, 0, PLATE_T - 0.2) * Rot(180, 0, 0) * bolt
-
-
-def report(name: str, part: Part) -> None:
-    bb = part.bounding_box()
-    print(f"{name}: solids={len(part.solids())} valid={part.is_valid} "
-          f"bbox={bb.size.X:.2f} x {bb.size.Y:.2f} x {bb.size.Z:.2f} mm "
-          f"volume={part.volume / 1000:.2f} cm^3 (~{part.volume * 1.24e-3:.1f} g PLA solid)")
 
 
 def wheel() -> Part:
@@ -178,8 +126,8 @@ def tab_path() -> Part:
 
 if __name__ == "__main__":
     holder = build_holder()
-    peg = build_peg()
-    bolt = build_bolt()
+    peg = Pos(PEG_X, PEG_Y, 0) * mb.peg()
+    bolt = mb.flush_bolt()
     report("holder", holder)
     report("peg", peg)
     report("bolt", bolt)
@@ -191,7 +139,7 @@ if __name__ == "__main__":
         export_step(part, str(out / f"{name}.step"))
 
     # preview: holder, peg, bolt (installed) and ghosted caliper for context
-    bolt_in = installed(bolt)
+    bolt_in = mb.installed_bolt(bolt)
     beam_z = BACK_Z + BEAM_T / 2
     caliper = (Pos(0, FORK_TOP - 60, beam_z) * Box(BEAM_W, 150, BEAM_T)
                + Pos(0, FORK_TOP + 20, beam_z) * Box(27, 40, 10)

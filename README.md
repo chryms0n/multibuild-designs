@@ -31,3 +31,4 @@ Each model script writes its STL/STEP files and a preview image (`<part>.png`) t
 | Part | Script | Print files |
 | --- | --- | --- |
 | Caliper holder (150 mm vernier caliper, hangs below one MultiBoard large hole; flush coin-slot bolt + anti-rotation peg) | `models/multiboard/caliper_holder.py` | `exports/caliper_holder.stl`, `exports/caliper_holder_bolt.stl`, `exports/caliper_holder_peg.stl` |
+| Glue gun arms (two separate arms left/right of the trigger; bolts 5 grid units apart in one row; flush coin-slot bolt + peg each) | `models/multiboard/glue_gun_arms.py` | `exports/glue_gun_arms_left.stl`, `exports/glue_gun_arms_right.stl`, 2 × `exports/glue_gun_arms_bolt.stl`, 2 × `exports/glue_gun_arms_peg.stl` |
