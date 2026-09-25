@@ -3,8 +3,10 @@
 Every constant cites its source (official docs or a user measurement), per CLAUDE.md.
 All lengths in mm.
 """
-from build123d import (Align, Box, Cylinder, GeomType, Helix, Part, Plane, Polygon, Pos, Rot,
-                       chamfer, sweep)
+import math
+
+from build123d import (Align, Box, Circle, Cylinder, GeomType, Helix, Part, Plane, Polygon, Pos,
+                       Rectangle, Rot, chamfer, extrude, sweep)
 
 # --- Grid -------------------------------------------------------------------
 # Source: https://docs.multibuild.io/beginner-section/core-parts-documentation
@@ -120,11 +122,35 @@ def peg() -> Part:
     return tip + base
 
 
-def cut_mount(part: Part, x: float, y: float, peg_xy: tuple[float, float]) -> Part:
+TEARDROP_FLAT = 1.1   # teardrop roof cut flat this far (x radius) from the centre
+
+
+def teardrop(r: float, depth: float, up: tuple[float, float]) -> Part:
+    """Hole along +Z from z = 0 for a plate printed standing on edge: round, with a
+    45 deg roof towards `up` (unit XY vector) that ends in a short flat bridge."""
+    ux, uy = up
+    s = math.sqrt(0.5)
+    roof = Polygon((0, 0), (r * s * (ux + uy), r * s * (uy - ux)),    # counter-clockwise,
+                   (r * math.sqrt(2) * ux, r * math.sqrt(2) * uy),     # so it faces +Z
+                   (r * s * (ux - uy), r * s * (uy + ux)), align=None)
+    keep = Pos(ux * (TEARDROP_FLAT - 2) * r, uy * (TEARDROP_FLAT - 2) * r) \
+        * Rot(0, 0, math.degrees(math.atan2(uy, ux))) * Rectangle(4 * r, 4 * r)
+    return extrude((Circle(r) + roof) & keep, depth)
+
+
+def cut_mount(part: Part, x: float, y: float, peg_xy: tuple[float, float],
+              up: tuple[float, float] | None = None) -> Part:
     """Cut the bolt hole, flange counterbore and peg socket into a mounting plate
-    of thickness MOUNT_PLATE_T whose back lies on Z = 0. peg_xy is absolute."""
+    of thickness MOUNT_PLATE_T whose back lies on Z = 0. peg_xy is absolute.
+    up: print direction (unit XY vector) when the plate prints standing on edge;
+    the holes then get teardrop roofs pointing that way."""
     t = MOUNT_PLATE_T
-    part -= Pos(x, y, t / 2) * Cylinder(BOLT_HOLE_D / 2, t + 1)
-    part -= Pos(x, y, t - CB_DEPTH / 2 + 0.01) * Cylinder(CB_D / 2, CB_DEPTH + 0.02)
-    part -= Pos(*peg_xy, PEG_IN / 2 - 0.01) * Cylinder(PEG_SOCKET_D / 2, PEG_IN + 0.02)
+    if up is None:
+        part -= Pos(x, y, t / 2) * Cylinder(BOLT_HOLE_D / 2, t + 1)
+        part -= Pos(x, y, t - CB_DEPTH / 2 + 0.01) * Cylinder(CB_D / 2, CB_DEPTH + 0.02)
+        part -= Pos(*peg_xy, PEG_IN / 2 - 0.01) * Cylinder(PEG_SOCKET_D / 2, PEG_IN + 0.02)
+        return part
+    part -= Pos(x, y, -0.5) * teardrop(BOLT_HOLE_D / 2, t + 1, up)
+    part -= Pos(x, y, t - CB_DEPTH) * teardrop(CB_D / 2, CB_DEPTH + 0.02, up)
+    part -= Pos(*peg_xy, -0.02) * teardrop(PEG_SOCKET_D / 2, PEG_IN + 0.02, up)
     return part

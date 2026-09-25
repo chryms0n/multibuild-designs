@@ -47,6 +47,12 @@ def _draw(ax, items, rot, title):
     ax.axis("off")
 
 
+def view(ax, title, elev, azim, items):
+    """Draw one shaded view into a matplotlib axis; items: [(shape, rgb, alpha), ...]."""
+    tris = [(_triangles(s), c, a) for s, c, a in items]
+    _draw(ax, tris, _rotation(elev, azim), title)
+
+
 def render(path, views, figsize=(16, 7), suptitle=None):
     """Render views side by side.
 
@@ -55,8 +61,7 @@ def render(path, views, figsize=(16, 7), suptitle=None):
     """
     fig, axes = plt.subplots(1, len(views), figsize=figsize)
     for ax, (title, elev, azim, items) in zip(np.atleast_1d(axes), views):
-        tris = [(_triangles(s), c, a) for s, c, a in items]
-        _draw(ax, tris, _rotation(elev, azim), title)
+        view(ax, title, elev, azim, items)
     if suptitle:
         fig.suptitle(suptitle)
     fig.tight_layout()
