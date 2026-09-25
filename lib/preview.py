@@ -47,6 +47,12 @@ def _draw(ax, items, rot, title):
     ax.axis("off")
 
 
+def view(ax, title, elev, azim, items):
+    """Draw one shaded view into a matplotlib axis; items: [(shape, rgb, alpha), ...]."""
+    tris = [(_triangles(s), c, a) for s, c, a in items]
+    _draw(ax, tris, _rotation(elev, azim), title)
+
+
 def render(path, views, figsize=(16, 7), suptitle=None):
     """Render views side by side.
 
@@ -55,10 +61,17 @@ def render(path, views, figsize=(16, 7), suptitle=None):
     """
     fig, axes = plt.subplots(1, len(views), figsize=figsize)
     for ax, (title, elev, azim, items) in zip(np.atleast_1d(axes), views):
-        tris = [(_triangles(s), c, a) for s, c, a in items]
-        _draw(ax, tris, _rotation(elev, azim), title)
+        view(ax, title, elev, azim, items)
     if suptitle:
         fig.suptitle(suptitle)
     fig.tight_layout()
     fig.savefig(path, dpi=90)
     plt.close(fig)
+
+
+def report(name, part):
+    """Hand-over check: single valid solid, bounding box, volume."""
+    bb = part.bounding_box()
+    print(f"{name}: solids={len(part.solids())} valid={part.is_valid} "
+          f"bbox={bb.size.X:.2f} x {bb.size.Y:.2f} x {bb.size.Z:.2f} mm "
+          f"volume={part.volume / 1000:.2f} cm^3 (~{part.volume * 1.24e-3:.1f} g PLA solid)")
