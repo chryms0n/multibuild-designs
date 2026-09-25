@@ -17,13 +17,13 @@ back of the plate on Z = 0. Print the holder in this orientation (back face on
 the bed), the bolt on its slotted face (exported that way) and the peg standing
 on one end; no supports needed.
 
-Exports: exports/caliper_holder.{stl,step}, exports/caliper_holder_peg.{stl,step},
-exports/caliper_holder_bolt.{stl,step}
+Exports (to exports/caliper_holder/): caliper_holder.{stl,step},
+caliper_holder_peg.{stl,step}, caliper_holder_bolt.{stl,step}, previews
 """
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from build123d import *  # noqa: E402
@@ -132,7 +132,8 @@ if __name__ == "__main__":
     report("peg", peg)
     report("bolt", bolt)
 
-    out = ROOT / "exports"
+    out = ROOT / "exports" / "caliper_holder"
+    out.mkdir(parents=True, exist_ok=True)
     for name, part in [("caliper_holder", holder), ("caliper_holder_peg", peg),
                        ("caliper_holder_bolt", bolt)]:
         export_stl(part, str(out / f"{name}.stl"))

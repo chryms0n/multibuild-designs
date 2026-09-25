@@ -36,7 +36,7 @@ The arm STL/STEP files are exported in that orientation (bed at z = 0). Use a br
 Frame (modelling): X along the wall, Y up, Z out of the wall; back of the plates
 on Z = 0.
 
-Exports: exports/glue_gun_arms_{left,right,bolt,peg}.{stl,step},
+Exports (to exports/glue_gun_arms/): glue_gun_arms_{left,right,bolt,peg}.{stl,step},
 glue_gun_arms.png, glue_gun_arms_section.png
 """
 import math
@@ -45,7 +45,7 @@ from pathlib import Path
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
 from build123d import *  # noqa: E402
@@ -524,7 +524,8 @@ if __name__ == "__main__":
         print(f"{name}: faces steeper than 45 deg off the bed {bad:.1f} mm^2, of which teardrop bridges "
               f"{flat:.1f}; unsupported islands when sliced: {islands(part)}")
 
-    out = ROOT / "exports"
+    out = ROOT / "exports" / "glue_gun_arms"
+    out.mkdir(parents=True, exist_ok=True)
     for name, part in [("glue_gun_arms_left", left_p), ("glue_gun_arms_right", right_p),
                        ("glue_gun_arms_bolt", bolt), ("glue_gun_arms_peg", peg)]:
         export_stl(part, str(out / f"{name}.stl"))
