@@ -2,7 +2,9 @@
 
 Holds a 150 mm vernier caliper (Connex COXT710520) hanging vertically, jaws up.
 The beam drops into a short fork; the wider slider rests on top of the fork.
-The left side of the fork is notched so the fine-adjust wheel below the slider fits.
+The left side of the fork is notched: the fine-adjust wheel below the slider rests
+on the notch floor while the slider rests on the right arm. A groove in the back
+wall lets the depth-rod guide tab at the beam's end slide through.
 Mounted with one official Large Thread bolt through the plate, plus a separate
 press-in peg that sits in the small hole top-left of the bolt and stops rotation.
 
@@ -23,11 +25,20 @@ from build123d import *  # noqa: E402
 from lib import multiboard as mb  # noqa: E402
 from lib.preview import render  # noqa: E402
 
-# --- Caliper (estimated from the user's photo; user accepted the estimates) --
+# --- Caliper (estimated from the user's photos via the caliper's own cm scale) --
 BEAM_W = 16.0
 BEAM_T = 3.5
 FIT = 1.0                    # clearance per side around the beam
-WHEEL_D = 14.0               # fine-adjust wheel just below the slider, left of the beam
+# Fine-adjust wheel: axis perpendicular to the scale face, left of the beam, just
+# below the slider; it also sticks out behind the beam.
+WHEEL_D = 10.5
+WHEEL_DROP = 11.0            # lowest point of the wheel below the slider's bottom edge
+WHEEL_X = -BEAM_W / 2 - 1.2  # wheel centre, ~1 mm outside the beam's left edge
+WHEEL_T = 10.0               # thickness along Z (guess; the notch is cut through all Z)
+WHEEL_CLR = 1.0
+# Depth-rod guide tab on the back of the beam's bottom end, roughly centred.
+TAB_W = 9.0
+TAB_H = 2.0                  # protrusion behind the beam (guess; hollow behind is ~9 mm)
 
 # --- Print / design choices ---------------------------------------------------
 WALL = 2.4                   # 6 lines of 0.4 mm
@@ -35,14 +46,17 @@ PLATE_T = 5.0                # mb.LARGE_THREAD_SHANK_L - TILE_THICKNESS - TILE_W
 PLATE_W = 36.0
 HEAD_CLR = 1.5               # air between bolt head and the caliper beam
 FORK_H = 25.0                # right arm; the left arm is notched for the wheel
+CORNER_R = 6.0               # plate corner radius
+TAB_GROOVE_W = TAB_W + 2 * 1.0
 LIP = 3.0                    # front lips reach this far over the slot (45 deg underside)
-BOLT_HOLE_D = mb.large_bolt_clearance_d(0.5)
+BOLT_HOLE_D = mb.large_bolt_clearance_d(0.0)  # test print: +0.5/side was too loose
 
 # --- Peg ----------------------------------------------------------------------
-PEG_D = mb.SMALL_HOLE_D - 2 * 0.3
+PEG_D = mb.SMALL_HOLE_D - 2 * 0.3   # part that goes into the tile's small hole
 PEG_OUT = 4.0                # length sticking into the tile's small hole
 PEG_IN = 3.0                 # length pressed into the plate
-PEG_SOCKET_D = PEG_D + 0.2
+PEG_SOCKET_D = 5.6           # test print: 4.6 printed smaller than the tile's small hole
+PEG_IN_D = PEG_SOCKET_D - 0.2  # press fit (printed holes come out undersize)
 PEG_CHAMFER = 0.6
 PEG_X, PEG_Y = mb.SMALL_HOLE_OFFSET
 
@@ -72,8 +86,9 @@ def fork_profile() -> Face:
         (-win, FRONT_Z + 1), (-win, LIP_Z), (-SLOT_W / 2, LIP_Z - LIP),
         align=None,
     )
-    # hollow behind the back wall saves filament; the back wall bridges it
-    hollow = Rectangle(SLOT_W, BACK_Z - WALL - PLATE_T - 0.01, align=(Align.CENTER, Align.MIN))
+    # hollow behind the back wall saves filament and takes the guide tab; it is only
+    # as wide as the tab groove so the back wall strips beside it are fully supported
+    hollow = Rectangle(TAB_GROOVE_W, BACK_Z - WALL - PLATE_T - 0.01, align=(Align.CENTER, Align.MIN))
     hollow = Pos(0, PLATE_T - 0.005) * hollow
     return outer - slot - hollow
 
@@ -84,30 +99,30 @@ def build_holder() -> Part:
     # Plane.XZ has its normal along -Y; place it at the fork top and extrude down
     fork = extrude(Plane.XZ.offset(-FORK_TOP) * fork_profile(), FORK_H)
     holder = plate + fork
-    # notch for the fine-adjust wheel: left arm, left lip and the edge of the back wall
-    notch_h = WHEEL_D + 1.0
-    arm_x0, arm_x1 = -OUT_W / 2 - 1, -BEAM_W / 2
-    holder -= Pos((arm_x0 + arm_x1) / 2, FORK_TOP - notch_h / 2 + 0.5,
-                  (PLATE_T + FRONT_Z + 1) / 2 + 0.01) * Box(
-        arm_x1 - arm_x0, notch_h + 1, FRONT_Z + 1 - PLATE_T)
-    lip_x0, lip_x1 = -BEAM_W / 2, -(SLOT_W / 2 - LIP)
-    lip_z0 = BACK_Z + BEAM_T
-    holder -= Pos((lip_x0 + lip_x1) / 2, FORK_TOP - notch_h / 2 + 0.5,
-                  (lip_z0 + FRONT_Z + 1) / 2) * Box(
-        lip_x1 - lip_x0 + 0.01, notch_h + 1, FRONT_Z + 1 - lip_z0)
+    # wheel notch: arm, lip and back wall; the wheel rests on its floor
+    nx0 = -OUT_W / 2 - 1
+    nx1 = WHEEL_X + WHEEL_D / 2 + WHEEL_CLR
+    ny0 = FORK_TOP - WHEEL_DROP
+    holder -= Pos((nx0 + nx1) / 2, (ny0 + FORK_TOP + 1) / 2, (PLATE_T + FRONT_Z + 1) / 2 + 0.01) * Box(
+        nx1 - nx0, FORK_TOP + 1 - ny0, FRONT_Z + 1 - PLATE_T)
+    # groove through the back wall for the depth-rod guide tab
+    wz = BACK_Z - WALL / 2
+    holder -= Pos(0, FORK_TOP - FORK_H / 2, wz) * Box(TAB_GROOVE_W, FORK_H + 2, WALL + 0.02)
     holder -= Pos(0, 0, PLATE_T / 2) * Cylinder(BOLT_HOLE_D / 2, PLATE_T + 1)
     holder -= Pos(PEG_X, PEG_Y, PEG_IN / 2 - 0.01) * Cylinder(PEG_SOCKET_D / 2, PEG_IN + 0.02)
     # soften the outer plate edges parallel to Z
     edges = holder.edges().filter_by(Axis.Z).filter_by(
         lambda e: abs(abs(e.center().X) - PLATE_W / 2) < 1e-6)
-    return fillet(edges, 2.0)
+    return fillet(edges, CORNER_R)
 
 
 def build_peg() -> Part:
     """Printed standing on end; shown here in its installed position."""
-    peg = Cylinder(PEG_D / 2, PEG_OUT + PEG_IN)
-    peg = chamfer(peg.edges().filter_by(GeomType.CIRCLE), PEG_CHAMFER)
-    return Pos(PEG_X, PEG_Y, (PEG_IN - PEG_OUT) / 2) * peg
+    tip = Pos(0, 0, -PEG_OUT / 2) * Cylinder(PEG_D / 2, PEG_OUT)
+    tip = chamfer(tip.edges().filter_by(GeomType.CIRCLE).sort_by(Axis.Z)[0], PEG_CHAMFER)
+    base = Pos(0, 0, PEG_IN / 2) * Cylinder(PEG_IN_D / 2, PEG_IN)
+    base = chamfer(base.edges().filter_by(GeomType.CIRCLE).sort_by(Axis.Z)[-1], 0.4)
+    return Pos(PEG_X, PEG_Y, 0) * (tip + base)
 
 
 def report(name: str, part: Part) -> None:
@@ -115,6 +130,17 @@ def report(name: str, part: Part) -> None:
     print(f"{name}: solids={len(part.solids())} valid={part.is_valid} "
           f"bbox={bb.size.X:.2f} x {bb.size.Y:.2f} x {bb.size.Z:.2f} mm "
           f"volume={part.volume / 1000:.2f} cm^3 (~{part.volume * 1.24e-3:.1f} g PLA solid)")
+
+
+def wheel() -> Part:
+    """Approximate fine-adjust wheel, resting on the notch floor (for checks/preview)."""
+    return Pos(WHEEL_X, FORK_TOP - WHEEL_DROP + WHEEL_D / 2, BACK_Z + BEAM_T / 2) * Cylinder(
+        WHEEL_D / 2, WHEEL_T)
+
+
+def tab_path() -> Part:
+    """Volume swept by the guide tab when the caliper is lifted through the fork."""
+    return Pos(0, FORK_TOP - FORK_H / 2, BACK_Z - TAB_H / 2) * Box(TAB_W, FORK_H + 4, TAB_H)
 
 
 if __name__ == "__main__":
@@ -134,7 +160,7 @@ if __name__ == "__main__":
     beam_z = BACK_Z + BEAM_T / 2
     caliper = (Pos(0, FORK_TOP - 60, beam_z) * Box(BEAM_W, 150, BEAM_T)
                + Pos(0, FORK_TOP + 20, beam_z) * Box(27, 40, 10)
-               + Pos(-BEAM_W / 2 - WHEEL_D / 2, FORK_TOP - WHEEL_D / 2, beam_z) * Cylinder(WHEEL_D / 2, 4)
+               + wheel()
                + Pos(0, FORK_TOP + 48, beam_z) * Box(75, 14, BEAM_T))
     blue, orange, grey, light = (0.35, 0.55, 0.85), (0.95, 0.55, 0.2), (0.4, 0.4, 0.4), (0.8, 0.8, 0.78)
     parts = [(holder, blue, 1), (peg, orange, 1)]
