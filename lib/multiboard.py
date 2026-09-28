@@ -3,7 +3,11 @@
 Every constant cites its source (official docs or a user measurement), per CLAUDE.md.
 All lengths in mm.
 """
-from build123d import Align, Cylinder, Helix, Part, Plane, Polygon, Pos, chamfer, sweep
+import math
+
+from build123d import (Align, Box, Circle, Cone, Cylinder, Face, GeomType, Helix, Keep, Part,
+                       Plane, Polygon, Pos, Rectangle, RegularPolygon, Rot, chamfer, extrude, loft, split,
+                       sweep)
 
 # --- Grid -------------------------------------------------------------------
 # Source: https://docs.multibuild.io/beginner-section/core-parts-documentation
@@ -70,3 +74,167 @@ def large_thread(length: float, clearance: float = 0.2, lead_in: float = 1.0) ->
     envelope = Cylinder(r_maj, length, align=(Align.CENTER, Align.CENTER, Align.MIN))
     envelope = chamfer(envelope.edges().sort_by(lambda e: e.center().Z)[-1], lead_in)
     return (core + ridge) & envelope
+
+
+# --- Our flush Large Thread bolt ----------------------------------------------
+# Design choices (not MultiBuild dimensions): a flat flange that sits flush in a
+# counterbore in the part's mounting plate, turned with a coin.
+FLANGE_D = 28.0
+FLANGE_T = 4.0
+UNDER_HEAD = 3.0                 # plate material between the flange and the tile
+CB_D = FLANGE_D + 2 * 0.4        # counterbore for the flange
+CB_DEPTH = FLANGE_T + 0.2        # flange ends slightly below the plate front
+MOUNT_PLATE_T = UNDER_HEAD + CB_DEPTH
+FLUSH_THREAD_L = UNDER_HEAD + TILE_THICKNESS + 3.5   # 3.5 past the tile, short of the wall
+FLUSH_THREAD_CLR = 0.2           # radial; first print of our own thread
+BOLT_HOLE_D = large_bolt_clearance_d(0.0)  # caliper test print: +0.5/side was too loose
+COIN_SLOT_W = 2.8                # euro coins are 1.67-2.33 thick
+COIN_SLOT_DEPTH = 2.2
+
+# --- Anti-rotation peg (press-fit into the plate, sits in a small hole) --------
+PEG_D = SMALL_HOLE_D - 2 * 0.3   # part that goes into the tile's small hole
+PEG_OUT = 4.0                    # length sticking into the tile's small hole
+PEG_IN = 3.0                     # length pressed into the plate
+PEG_SOCKET_D = 5.6               # caliper test print: 4.6 printed smaller than the small hole
+PEG_IN_D = PEG_SOCKET_D - 0.2    # press fit (printed holes come out undersize)
+PEG_CHAMFER = 0.6
+
+
+def flush_bolt(thread_l: float = FLUSH_THREAD_L) -> Part:
+    """Print orientation: slotted face on the bed (z = 0), thread pointing up."""
+    flange = Cylinder(FLANGE_D / 2, FLANGE_T, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    flange = chamfer(flange.edges().sort_by(lambda e: e.center().Z)[-1], 0.6)  # meets the counterbore floor
+    flange -= Pos(0, 0, COIN_SLOT_DEPTH / 2 - 0.01) * Box(FLANGE_D + 2, COIN_SLOT_W, COIN_SLOT_DEPTH + 0.02)
+    # large_thread's booleans fail at some lengths (e.g. 10-12.5 mm), so a shorter
+    # thread is cut from the full-length one rather than built directly
+    assert thread_l <= FLUSH_THREAD_L
+    thread = large_thread(FLUSH_THREAD_L + 0.01, FLUSH_THREAD_CLR)
+    if thread_l < FLUSH_THREAD_L:
+        thread = split(Pos(0, 0, thread_l - FLUSH_THREAD_L) * thread, bisect_by=Plane.XY, keep=Keep.TOP)
+    bolt = flange + Pos(0, 0, FLANGE_T - 0.01) * thread
+    assert len(bolt.solids()) == 1 and abs(bolt.bounding_box().max.Z - FLANGE_T - thread_l) < 0.02
+    return bolt
+
+
+def installed_bolt(bolt: Part, x: float = 0, y: float = 0) -> Part:
+    """Bolt as fitted in a mounting plate (back on Z = 0): flange flush, thread into the wall."""
+    return Pos(x, y, MOUNT_PLATE_T - 0.2) * Rot(180, 0, 0) * bolt
+
+
+def peg() -> Part:
+    """Printed standing on end; returned in its installed position at the origin."""
+    tip = Pos(0, 0, -PEG_OUT / 2) * Cylinder(PEG_D / 2, PEG_OUT)
+    tip = chamfer(tip.edges().filter_by(GeomType.CIRCLE).sort_by(lambda e: e.center().Z)[0], PEG_CHAMFER)
+    base = Pos(0, 0, PEG_IN / 2) * Cylinder(PEG_IN_D / 2, PEG_IN)
+    base = chamfer(base.edges().filter_by(GeomType.CIRCLE).sort_by(lambda e: e.center().Z)[-1], 0.4)
+    return tip + base
+
+
+TEARDROP_FLAT = 1.1   # teardrop roof cut flat this far (x radius) from the centre
+
+
+def teardrop(r: float, depth: float, up: tuple[float, float]) -> Part:
+    """Hole along +Z from z = 0 for a plate printed standing on edge: round, with a
+    45 deg roof towards `up` (unit XY vector) that ends in a short flat bridge."""
+    ux, uy = up
+    s = math.sqrt(0.5)
+    roof = Polygon((0, 0), (r * s * (ux + uy), r * s * (uy - ux)),    # counter-clockwise,
+                   (r * math.sqrt(2) * ux, r * math.sqrt(2) * uy),     # so it faces +Z
+                   (r * s * (ux - uy), r * s * (uy + ux)), align=None)
+    keep = Pos(ux * (TEARDROP_FLAT - 2) * r, uy * (TEARDROP_FLAT - 2) * r) \
+        * Rot(0, 0, math.degrees(math.atan2(uy, ux))) * Rectangle(4 * r, 4 * r)
+    return extrude((Circle(r) + roof) & keep, depth)
+
+
+def cut_mount(part: Part, x: float, y: float, peg_xy: tuple[float, float],
+              up: tuple[float, float] | None = None) -> Part:
+    """Cut the bolt hole, flange counterbore and peg socket into a mounting plate
+    of thickness MOUNT_PLATE_T whose back lies on Z = 0. peg_xy is absolute.
+    up: print direction (unit XY vector) when the plate prints standing on edge;
+    the holes then get teardrop roofs pointing that way."""
+    t = MOUNT_PLATE_T
+    if up is None:
+        part -= Pos(x, y, t / 2) * Cylinder(BOLT_HOLE_D / 2, t + 1)
+        part -= Pos(x, y, t - CB_DEPTH / 2 + 0.01) * Cylinder(CB_D / 2, CB_DEPTH + 0.02)
+        part -= Pos(*peg_xy, PEG_IN / 2 - 0.01) * Cylinder(PEG_SOCKET_D / 2, PEG_IN + 0.02)
+        return part
+    part -= Pos(x, y, -0.5) * teardrop(BOLT_HOLE_D / 2, t + 1, up)
+    part -= Pos(x, y, t - CB_DEPTH) * teardrop(CB_D / 2, CB_DEPTH + 0.02, up)
+    part -= Pos(*peg_xy, -0.02) * teardrop(PEG_SOCKET_D / 2, PEG_IN + 0.02, up)
+    return part
+
+
+# --- Flush Snap (clicks into a large hole from the back of a plate) -------------
+# Source: https://docs.multibuild.io/beginner-section/core-parts-documentation
+#   "Snaps 'snap' into the Large Holes of the MultiBoard Tiles".
+# Dimensions measured by slicing the user-supplied official "Multiboard Flush Snap.stl".
+# An octagonal ring (flats facing +-X/+-Y) with a lead-in taper; on each flat a thin
+# tab, free behind (slot) and below (notch), carries a wedge that clicks behind the
+# hole's lip. The original's threaded mid hole becomes a plain bore here.
+SNAP_H = 6.0
+SNAP_BASE_AF = 22.856            # across flats at the base, up to SNAP_BASE_H
+SNAP_BASE_H = 0.485
+SNAP_BODY_AF = 21.15             # across flats from SNAP_TAPER_TOP up
+SNAP_TAPER_TOP = 2.0
+SNAP_TAB_HALF_L = 3.58           # half length of a tab along its flat
+SNAP_TAB_IN = 9.775              # tab's inner face, from the axis
+SNAP_SLOT_IN = 8.975             # inner wall of the slot behind the tab
+SNAP_TAB_Z0 = 3.6                # tab underside; the notch below reaches down to
+SNAP_NOTCH_Z0 = 2.6
+SNAP_WEDGE_HALF_L = 1.5          # wedge on the tab: half length along the flat
+SNAP_WEDGE = ((3.76, 10.575), (5.0, 11.05), (5.4, 11.05), (6.0, 10.6))  # (z, distance from axis)
+SNAP_BORE_R = 6.75               # the original's thread crest radius
+SNAP_CSK_Z = 4.35                # 45 deg countersink at the top, from this height
+
+
+def flush_snap() -> Part:
+    """Flush Snap standing on z = 0, axis along Z. Its underside is meant to be fused
+    to a plate, so the original's first-layer details there are left out."""
+    def octagon(af, z):
+        return Plane.XY.offset(z) * RegularPolygon(af / 2, 8, major_radius=False, rotation=22.5)
+    snap = extrude(octagon(SNAP_BASE_AF, 0), SNAP_BASE_H) \
+        + loft([octagon(SNAP_BASE_AF, SNAP_BASE_H), octagon(SNAP_BODY_AF, SNAP_TAPER_TOP)], ruled=True) \
+        + extrude(octagon(SNAP_BODY_AF, SNAP_TAPER_TOP), SNAP_H - SNAP_TAPER_TOP)
+    out = SNAP_BODY_AF / 2
+    wedge = Plane.YZ.offset(-SNAP_WEDGE_HALF_L) * Polygon(
+        (SNAP_TAB_IN, SNAP_WEDGE[0][0]), *[(r, z) for z, r in SNAP_WEDGE], (SNAP_TAB_IN, SNAP_H), align=None)
+    wedge = extrude(wedge, 2 * SNAP_WEDGE_HALF_L)
+    for a in (0, 90, 180, 270):
+        turn = Rot(0, 0, a)
+        snap -= turn * Pos(0, (SNAP_SLOT_IN + out + 1) / 2, (SNAP_NOTCH_Z0 + SNAP_H + 1) / 2) \
+            * Box(2 * SNAP_TAB_HALF_L, out + 1 - SNAP_SLOT_IN, SNAP_H + 1 - SNAP_NOTCH_Z0)
+        snap += turn * Pos(0, (SNAP_TAB_IN + out) / 2, (SNAP_TAB_Z0 + SNAP_H) / 2) \
+            * Box(2 * SNAP_TAB_HALF_L, out - SNAP_TAB_IN, SNAP_H - SNAP_TAB_Z0)
+        snap += turn * wedge
+    snap -= Pos(0, 0, -0.5) * Cylinder(SNAP_BORE_R, SNAP_H + 1, align=(Align.CENTER, Align.CENTER, Align.MIN))
+    top = SNAP_H + 0.1
+    snap -= Pos(0, 0, SNAP_CSK_Z) * Cone(SNAP_BORE_R, SNAP_BORE_R + top - SNAP_CSK_Z, top - SNAP_CSK_Z,
+                                         align=(Align.CENTER, Align.CENTER, Align.MIN))
+    return snap
+
+
+# --- 2x6 MU "Left Grid Interfitted" MultiBoard Octagon Plate --------------------
+# Source: measured from the user-supplied official
+# "2x6 MU - Left Grid Interfitted - MultiBoard Octagon Plate.stl". Its own frame:
+# 2 columns of large holes along X, 6 rows along Y, centred on the origin.
+OCT_PLATE_T = 6.2
+OCT_PLATE_SIZE = (2 * GRID_PITCH, 6 * GRID_PITCH)
+# Interlocking tabs: 45 deg half-diamonds around the small holes on the +X long edge
+# and along the +Y short edge, reaching 7.32 mm past the edge. (The opposite edges
+# have matching notches, which a recess can ignore.)
+OCT_PLATE_TAB = 7.322
+OCT_PLATE_TABS = [(GRID_PITCH, -50 + GRID_PITCH * k) for k in range(6)] + [(0, 75), (-25, 75)]
+
+
+def oct_plate_large_holes():
+    return [(sx * GRID_PITCH / 2, -62.5 + GRID_PITCH * k) for k in range(6) for sx in (-1, 1)]
+
+
+def oct_plate_outline(clearance: float = 0.0) -> Face:
+    """Footprint of the 2x6 interfitted plate in its own frame, grown by clearance."""
+    w, h = OCT_PLATE_SIZE
+    out = Rectangle(w + 2 * clearance, h + 2 * clearance)
+    side = (OCT_PLATE_TAB + clearance * math.sqrt(2)) * math.sqrt(2)
+    for x, y in OCT_PLATE_TABS:
+        out += Pos(x, y) * Rot(0, 0, 45) * Rectangle(side, side)
+    return out

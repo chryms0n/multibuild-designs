@@ -13,21 +13,23 @@ Printed on a Bambu Lab A1 in PLA.
 | Path | Contents |
 | --- | --- |
 | `lib/` | Shared geometry: MultiBoard mounting interface, MultiBin dimensions |
-| `models/multiboard/` | One source file per board-mounted part |
-| `models/multibin/` | One source file per bin |
-| `exports/` | Generated STL/STEP files, ready for the slicer |
+| `models/multiboard/<model>/` | One folder per board-mounted model, holding its script |
+| `models/multibin/<model>/` | One folder per bin, holding its script |
+| `exports/<model>/` | Generated STL/STEP files and previews for that model, ready for the slicer |
 
 ## Usage
 
 ```bash
 pip install -r requirements.txt
-python models/multiboard/<part>.py
+python models/multiboard/<model>/<model>.py
 ```
 
-Each model script writes its STL/STEP files and a preview image (`<part>.png`) to `exports/`.
+Each model script writes its STL/STEP files and preview images to `exports/<model>/`.
 
 ## Parts
 
-| Part | Script | Print files |
+| Part | Model folder | Print files |
 | --- | --- | --- |
-| Caliper holder (150 mm vernier caliper, hangs below one MultiBoard large hole; flush coin-slot bolt + anti-rotation peg) | `models/multiboard/caliper_holder.py` | `exports/caliper_holder.stl`, `exports/caliper_holder_bolt.stl`, `exports/caliper_holder_peg.stl` |
+| Caliper holder (150 mm vernier caliper, hangs below one MultiBoard large hole; flush coin-slot bolt + anti-rotation peg) | `models/multiboard/caliper_holder/` | `exports/caliper_holder/`: `caliper_holder.stl`, `caliper_holder_bolt.stl`, `caliper_holder_peg.stl` |
+| Glue gun arms (two separate arms left/right of the trigger, each a U channel shaped to the gun's cross-section; bolts 5 grid units apart in one row; flush coin-slot bolt + peg each; arms print standing on edge, exported in that pose) | `models/multiboard/glue_gun_arms/` | `exports/glue_gun_arms/`: `glue_gun_arms_left.stl`, `glue_gun_arms_right.stl`, 2 × `glue_gun_arms_bolt.stl`, 2 × `glue_gun_arms_peg.stl` |
+| Glue gun wall plate (taped flat to the wall; the 2x6 MultiBoard Octagon Plate clicks onto four printed Flush Snaps on its thin base, and a leg with a raised pad backs each arm's lower end, so the glue gun arms can be mounted without a MultiBoard wall) | `models/multiboard/glue_gun_arms/` | `exports/glue_gun_arms/`: `glue_gun_arms_wall_plate.stl` (plus the official 2x6 plate) |
