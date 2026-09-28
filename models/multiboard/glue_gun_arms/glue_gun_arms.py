@@ -42,6 +42,7 @@ glue_gun_arms.png, glue_gun_arms_section.png
 import math
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
@@ -132,6 +133,9 @@ PLATE_MARGIN = 4.6           # plate material around the counterbore
 PLATE_ROUND = 4.0
 BOLT_CLEAR = 6.0             # counterbore to cradle: room for fingers and a coin
 PRINT_MARGIN = 5.0           # keep every cradle face at least this far inside 45 deg
+# Bolt thread: through the arm's plate and a 6.2-6.5 mm MultiBoard plate or tile, ending
+# under 1 mm behind it, so the wall plate behind can stay thin
+BOLT_THREAD_L = mb.UNDER_HEAD + mb.TILE_THICKNESS + 0.5
 Z_MID = PLATE_T + CLR + T_BARREL / 2          # the gun's mid-plane
 
 
@@ -457,7 +461,9 @@ def overlap(a: Part, b: Part) -> float:
     return (a & b).volume
 
 
-if __name__ == "__main__":
+def design(verbose: bool = True) -> SimpleNamespace:
+    """Fit the gun's faces and build both arms, in the wall frame (unshifted).
+    Also used by glue_gun_arms_wall_plate.py."""
     # outline in mm, corrected for perspective; fit the faces the cradles touch
     px = np.array(OUTLINE_PX)
     gun_mm = perspective_correct(px)
@@ -471,7 +477,8 @@ if __name__ == "__main__":
         n = np.array([d[1], -d[0]])
         n = n if n @ normals[m].mean(axis=0) > 0 else -n
         faces[name] = (mu, d, n)
-        print(f"{name:6s} face: {m.sum():3d} points, straight within {worst:.2f} mm")
+        if verbose:
+            print(f"{name:6s} face: {m.sum():3d} points, straight within {worst:.2f} mm")
     mu, d, n = faces["knob"]
     faces["knob"] = (mu + n * KNOB_EXTRA, d, n)
     u0 = intersect(faces["nose"][:2], faces["barrel"][:2])
@@ -485,10 +492,17 @@ if __name__ == "__main__":
     left_c = Cradle("barrel", u0, [along("nose", u0, NOSE_L), along("barrel", u0, BARREL_L)])
     right_c = Cradle("handle", h1, [along("knob", h1, KNOB_L), along("handle", h1, HANDLE_L)])
 
-    LEFT_BOLT, RIGHT_BOLT = place_bolts(left_c.footprint(), right_c.footprint())
-    left, peg_l = build_arm(left_c, LEFT_BOLT)
-    right, peg_r = build_arm(right_c, RIGHT_BOLT)
+    left_bolt, right_bolt = place_bolts(left_c.footprint(), right_c.footprint())
+    left, peg_l = build_arm(left_c, left_bolt)
+    right, peg_r = build_arm(right_c, right_bolt)
+    return SimpleNamespace(gun_mm=gun_mm, left_c=left_c, right_c=right_c, left_bolt=left_bolt,
+                           right_bolt=right_bolt, left=left, right=right, peg_l=peg_l, peg_r=peg_r)
 
+
+if __name__ == "__main__":
+    d = design()
+    gun_mm, left_c, right_c = d.gun_mm, d.left_c, d.right_c
+    LEFT_BOLT, RIGHT_BOLT, left, right, peg_l, peg_r = d.left_bolt, d.right_bolt, d.left, d.right, d.peg_l, d.peg_r
     rel = RIGHT_BOLT - LEFT_BOLT
     print(f"right bolt relative to left: {rel.X:+.1f} x {rel.Y:+.1f} mm "
           f"= {rel.X / mb.GRID_PITCH:+.0f} x {rel.Y / mb.GRID_PITCH:+.0f} grid units")
@@ -515,7 +529,7 @@ if __name__ == "__main__":
     print(f"controls (must be > 0): gun 3 mm down {down:.0f} mm^3, 3 mm off the wall {fwd:.0f} mm^3")
 
     # print poses and exports
-    bolt, peg = mb.flush_bolt(), mb.peg()
+    bolt, peg = mb.flush_bolt(BOLT_THREAD_L), mb.peg()
     left_p, right_p = print_pose(left, left_c.up), print_pose(right, right_c.up)
     for name, part in [("left arm", left_p), ("right arm", right_p), ("bolt", bolt), ("peg", peg)]:
         report(name, part)

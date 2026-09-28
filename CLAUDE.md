@@ -33,5 +33,7 @@ copy MultiBuild's own model files into this repository (it is public).
   `models/multiboard/<model>/` or `models/multibin/<model>/`, holding its script
   `<model>.py`; the script exports STL (and STEP) and previews to `exports/<model>/`,
   file names starting with the model's name
+- A further part that belongs to the same build lives in that model's folder as
+  `<model>_<part>.py` (e.g. `glue_gun_arms/glue_gun_arms_wall_plate.py`)
 - Before handing a part over, check that it is a single valid solid, report its bounding
   box, and render a preview image
