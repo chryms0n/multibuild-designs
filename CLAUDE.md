@@ -29,7 +29,8 @@ copy MultiBuild's own model files into this repository (it is public).
 
 - CAD: build123d (`pip install build123d`)
 - Shared interface geometry lives in `lib/multiboard.py` and `lib/multibin.py`
-- One script per part in `models/multiboard/` or `models/multibin/`; each exports STL
+- One script per part in `models/multiboard/`, `models/multibin/` or `models/furniture/`
+  (parts that mount on furniture, not on MultiBuild); each exports STL
   (and STEP) to `exports/` with the same base name as the script
 - Before handing a part over, check that it is a single valid solid, report its bounding
   box, and render a preview image

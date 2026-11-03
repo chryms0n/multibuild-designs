@@ -15,6 +15,7 @@ Printed on a Bambu Lab A1 in PLA.
 | `lib/` | Shared geometry: MultiBoard mounting interface, MultiBin dimensions |
 | `models/multiboard/` | One source file per board-mounted part |
 | `models/multibin/` | One source file per bin |
+| `models/furniture/` | Parts that mount on furniture directly (e.g. 5 mm shelf-pin holes) |
 | `exports/` | Generated STL/STEP files, ready for the slicer |
 
 ## Usage
@@ -31,3 +32,5 @@ Each model script writes its STL/STEP files and a preview image (`<part>.png`) t
 | Part | Script | Print files |
 | --- | --- | --- |
 | Caliper holder (150 mm vernier caliper, one MultiBoard large hole + anti-rotation peg) | `models/multiboard/caliper_holder.py` | `exports/caliper_holder.stl`, `exports/caliper_holder_peg.stl` |
+| Shelf-pin wall hook (two 5 mm holes through a 36 mm panel, snap rod + pin, 16 mm wide J-hook with 25 mm gap for a ~10 kg backpack) | `models/furniture/shelf_pin_hook.py` | `exports/shelf_pin_hook.stl` (already in print orientation; support under the rods) |
+| Shelf-pin wall hook, small (same rods and plate, J-hook about half size: 12.5 mm gap, 11 mm lip) | `models/furniture/shelf_pin_hook_small.py` | `exports/shelf_pin_hook_small.stl` (already in print orientation; support under the rods) |
