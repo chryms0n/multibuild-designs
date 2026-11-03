@@ -14,11 +14,17 @@ Improves on the user's reference model (WallHook2.stl):
 Frame: X along the wall (part width), Y up, Z out of the wall. Lower rod axis at
 Y = 0, back face of the plate (against the panel) on Z = 0, rods point into -Z.
 
+Both rods are centred in the hook's width, so a load on the hook does not twist the
+part about the vertical.
+
 Print orientation: lying on its side, the X = 0 face on the bed (the exported STL is
 already in that orientation). Then the hook outline lies in the layer plane (strong
-for hook bending), the rods lie flat with layers running along them, and the snap
-prongs flex within the layers. No supports needed. The rods have flats top and bottom
-so they sit on the bed; this is why they are off-centre in the hook's width.
+for hook bending), the rods lie along the layers, and the snap prongs flex within
+the layers. The rods (and barbs) float half the width above the bed and need
+support underneath (tree supports, default 0.2 mm top gap); nothing else overhangs
+more than 45 deg. The rods have flats on top and bottom: the bottom flat gives the
+support a flat contact strip, and the flats face the direction with 0.5 mm clearance
+in the hole, so support marks there do not affect the fit.
 
 Exports: exports/shelf_pin_hook.{stl,step,png}
 """
@@ -41,8 +47,7 @@ PITCH = 32.5        # source: rod centre spacing in the user's reference WallHoo
 
 # --- Rods -----------------------------------------------------------------------
 ROD_D = 4.7         # reference rods measure 4.66; 0.15 mm clearance per side
-ROD_FLAT = 2.0      # flats at +-2.0 mm (print bed / top); 0.5 mm clearance in the hole
-ROD_X = ROD_FLAT    # rod axis height above the bed face (rods sit on the bed)
+ROD_FLAT = 2.0      # flats at +-2.0 mm (support side / top); 0.5 mm clearance in the hole
 PIN_L = 15.0        # lower plain pin, length into the hole
 PIN_CHAMFER = 0.8
 
@@ -60,6 +65,7 @@ BARB_TIP_Y = 1.9    # ramp height at the very tip (from the rod axis)
 PLATE_TOP = PITCH + 6.5
 TOP_R = 2.5         # top corner radius of the plate (in profile)
 BED_CHAMFER = 1.2   # outline edges on the bed side (45 deg, prints without support)
+# The rod builders below work around X = 0; build_hook moves them to X = w / 2.
 TOP_FILLET = 2.0    # outline edges on the top side (strap-friendly)
 
 
@@ -143,14 +149,14 @@ def body_profile(h: HookShape) -> Sketch:
 
 
 def flats(z0: float, z1: float) -> Part:
-    """Slab that trims the rods to their two flats (X = 0 .. 2 * ROD_FLAT)."""
-    return Pos(ROD_X, PITCH / 2, (z0 + z1) / 2) * Box(2 * ROD_FLAT, PITCH + 20, z1 - z0)
+    """Slab that trims the rods to their two flats (X = -ROD_FLAT .. ROD_FLAT)."""
+    return Pos(0, PITCH / 2, (z0 + z1) / 2) * Box(2 * ROD_FLAT, PITCH + 20, z1 - z0)
 
 
 def rod_cyl(y: float, z_end: float, r: float = ROD_D / 2, y_off: float = 0.0) -> Part:
     """Cylinder along Z from Z = +1 (inside the plate) down to z_end."""
     length = 1 - z_end
-    return Pos(ROD_X, y + y_off, 1 - length / 2) * Cylinder(r, length)
+    return Pos(0, y + y_off, 1 - length / 2) * Cylinder(r, length)
 
 
 def build_lower_pin() -> Part:
@@ -162,20 +168,20 @@ def build_lower_pin() -> Part:
 def build_snap_rod() -> Part:
     rod = rod_cyl(PITCH, SHOULDER_Z)
     yc = PITCH + SLOT_W / 2
-    barb = Pos(ROD_X, yc, (SHOULDER_Z + ROD_END_Z) / 2) * Cylinder(BARB_R, SHOULDER_Z - ROD_END_Z)
+    barb = Pos(0, yc, (SHOULDER_Z + ROD_END_Z) / 2) * Cylinder(BARB_R, SHOULDER_Z - ROD_END_Z)
     # lead-in ramp, drawn in (Z, Y): full height behind the shoulder, sloping to the tip
     y_full = SLOT_W / 2 + BARB_R
     ramp = Polygon(
         (SHOULDER_Z + 0.01, PITCH), (SHOULDER_Z + 0.01, PITCH + y_full),
         (SHOULDER_Z - BARB_CATCH_L, PITCH + y_full),
         (ROD_END_Z, PITCH + BARB_TIP_Y), (ROD_END_Z, PITCH), align=None)
-    barb &= yz(ramp, -1, 2 * ROD_FLAT + 1)
+    barb &= yz(ramp, -ROD_FLAT - 1, ROD_FLAT + 1)
     rod += barb + mirror(barb, about=Plane.XZ.offset(-PITCH))  # second barb below the slot
     rod &= flats(ROD_END_Z - 1, 2)
     # slot between the prongs, rounded root
     slot_len = SLOT_ROOT_Z - ROD_END_Z + 1
-    rod -= Pos(ROD_X, PITCH, SLOT_ROOT_Z - slot_len / 2) * Box(2 * ROD_FLAT + 2, SLOT_W, slot_len)
-    rod -= Pos(ROD_X, PITCH, SLOT_ROOT_Z) * Rot(0, 90, 0) * Cylinder(SLOT_W / 2, 2 * ROD_FLAT + 2)
+    rod -= Pos(0, PITCH, SLOT_ROOT_Z - slot_len / 2) * Box(2 * ROD_FLAT + 2, SLOT_W, slot_len)
+    rod -= Pos(0, PITCH, SLOT_ROOT_Z) * Rot(0, 90, 0) * Cylinder(SLOT_W / 2, 2 * ROD_FLAT + 2)
     return rod
 
 
@@ -183,7 +189,7 @@ def build_hook(h: HookShape = LARGE) -> Part:
     body = yz(body_profile(h), 0, h.w)
     body = chamfer(body.faces().sort_by(Axis.X)[0].edges(), BED_CHAMFER)
     body = fillet(body.faces().sort_by(Axis.X)[-1].edges(), TOP_FILLET)
-    return body + build_lower_pin() + build_snap_rod()
+    return body + Pos(h.w / 2, 0, 0) * (build_lower_pin() + build_snap_rod())
 
 
 def print_orientation(part: Part) -> Part:
@@ -200,11 +206,11 @@ def report(name: str, part: Part) -> None:
           f"volume={part.volume / 1000:.2f} cm^3 (~{part.volume * 1.24e-3:.1f} g PLA solid)")
 
 
-def panel() -> Part:
+def panel(rod_x: float) -> Part:
     """Ghost of the furniture panel with its two through holes (preview only)."""
-    p = Pos(ROD_X, PITCH / 2, -PANEL_T / 2) * Box(70, 110, PANEL_T)
+    p = Pos(rod_x, PITCH / 2, -PANEL_T / 2) * Box(70, 110, PANEL_T)
     for y in (0, PITCH):
-        p -= Pos(ROD_X, y, -PANEL_T / 2) * Cylinder(HOLE_D / 2, PANEL_T + 2)
+        p -= Pos(rod_x, y, -PANEL_T / 2) * Cylinder(HOLE_D / 2, PANEL_T + 2)
     return p
 
 
@@ -232,8 +238,8 @@ def export_variant(name: str, h: HookShape, fig: int) -> None:
         (f"Fig. {fig}a  Side profile (wall on the left)", 0, 90, parts),
         (f"Fig. {fig}b  Front 3/4", 25, 35, parts),
         (f"Fig. {fig}c  Snap tip close-up (barbs, slot)", 0, 90,
-         [(hook & Pos(ROD_X, PITCH, ROD_END_Z + 6) * Box(10, 10, 14), blue, 1)]),
-        (f"Fig. {fig}d  Mounted, panel ghosted", 15, 60, parts + [(panel(), light, 0.25)]),
+         [(hook & Pos(h.w / 2, PITCH, ROD_END_Z + 6) * Box(10, 10, 14), blue, 1)]),
+        (f"Fig. {fig}d  Mounted, panel ghosted", 15, 60, parts + [(panel(h.w / 2), light, 0.25)]),
     ], figsize=(20, 7))
     render(str(out / f"{name}_print.png"), [
         (f"Fig. {fig + 1}  Print orientation (bed = XY plane)", 35, -30, [(printed, blue, 1)]),
