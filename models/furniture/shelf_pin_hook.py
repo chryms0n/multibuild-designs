@@ -23,6 +23,7 @@ so they sit on the bed; this is why they are off-centre in the hook's width.
 Exports: exports/shelf_pin_hook.{stl,step,png}
 """
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -56,39 +57,65 @@ BARB_LEAD_L = 5.0   # lead-in ramp to the tip
 BARB_TIP_Y = 1.9    # ramp height at the very tip (from the rod axis)
 
 # --- Body -----------------------------------------------------------------------
-W = 16.0            # part width along X (print height)
-PLATE_T_TOP = 5.0   # back plate thickness at the top
-PLATE_T_BOT = 9.0   # ... and where the hook starts (plate front is tapered)
 PLATE_TOP = PITCH + 6.5
 TOP_R = 2.5         # top corner radius of the plate (in profile)
-HOOK_Y = 3.5        # height of the hook's inner-arc centre (seat bottom = HOOK_Y - HOOK_RI)
-HOOK_RI = 12.5      # inner radius of the hook seat; gap plate-to-tip = 2 * HOOK_RI = 25 mm
-TIP_T = 6.0         # tip leg thickness
-BOT_T = 10.0        # hook thickness at the bottom
-LIP_H = 22.0        # tip top above the seat bottom
-TIP_H = LIP_H - HOOK_RI - TIP_T / 2   # tip round-end centre above HOOK_Y
-OUTER_SHIFT = 2.0   # outer arc centre shifted towards the wall -> thicker near the plate
-HEEL_R = 4.0        # round-over of the bottom corner at the back face
 BED_CHAMFER = 1.2   # outline edges on the bed side (45 deg, prints without support)
 TOP_FILLET = 2.0    # outline edges on the top side (strap-friendly)
 
-# --- Derived ----------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class HookShape:
+    """Size of the J-hook and back plate; the rods are the same for every variant."""
+    w: float = 16.0            # part width along X (print height)
+    plate_t_top: float = 5.0   # back plate thickness at the top
+    plate_t_bot: float = 9.0   # ... and where the hook starts (plate front is tapered)
+    hook_y: float = 3.5        # height of the hook's inner-arc centre
+    hook_ri: float = 12.5      # inner radius of the seat; gap plate-to-tip = 2 * hook_ri
+    tip_t: float = 6.0         # tip leg thickness
+    bot_t: float = 10.0        # hook thickness at the bottom
+    lip_h: float = 22.0        # tip top above the seat bottom
+    outer_shift: float = 2.0   # outer arc centre shifted towards the wall
+    heel_r: float = 4.0        # round-over of the bottom corner at the back face
+
+    # derived, all as (Z, Y) in the side profile
+    @property
+    def tip_h(self):           # tip round-end centre above hook_y
+        return self.lip_h - self.hook_ri - self.tip_t / 2
+
+    @property
+    def inner_c(self):
+        return (self.plate_t_bot + self.hook_ri, self.hook_y)
+
+    @property
+    def tip_z0(self):          # tip leg inner face
+        return self.plate_t_bot + 2 * self.hook_ri
+
+    @property
+    def tip_z1(self):          # tip leg outer face
+        return self.tip_z0 + self.tip_t
+
+    @property
+    def outer(self):
+        """Outer arc (centre, radius): centre (oz, hook_y - e), radius R. It passes
+        through (tip_z1, hook_y) and its lowest point is bot_t below the seat:
+        R = hook_ri + bot_t - e and (tip_z1 - oz)^2 + e^2 = R^2 -> solve for e."""
+        oz = self.inner_c[0] - self.outer_shift
+        a = self.hook_ri + self.bot_t
+        e = (a ** 2 - (self.tip_z1 - oz) ** 2) / (2 * a)
+        return (oz, self.hook_y - e), a - e
+
+    @property
+    def bottom_y(self):        # lowest point of the hook = bottom of the back face
+        (_, cy), r = self.outer
+        return cy - r
+
+
+LARGE = HookShape()   # 25 mm gap, 22 mm lip: loaded backpack (~10 kg)
+
+# --- Derived (rods) ----------------------------------------------------------------
 SHOULDER_Z = -(PANEL_T + SNAP_PLAY)
 ROD_END_Z = SHOULDER_Z - BARB_CATCH_L - BARB_LEAD_L
 SLOT_ROOT_Z = SHOULDER_Z + FLEX_L
-INNER_C = (PLATE_T_BOT + HOOK_RI, HOOK_Y)         # (Z, Y) in the profile
-TIP_Z0 = PLATE_T_BOT + 2 * HOOK_RI                # tip leg inner face
-TIP_Z1 = TIP_Z0 + TIP_T                           # tip leg outer face
-# outer arc: centre (OUTER_Z, HOOK_Y - e), radius R; passes through (TIP_Z1, HOOK_Y)
-# and its lowest point is BOT_T below the seat:  R = HOOK_RI + BOT_T - e,
-# (TIP_Z1 - OUTER_Z)^2 + e^2 = R^2  ->  solve for e
-OUTER_Z = INNER_C[0] - OUTER_SHIFT
-_a = HOOK_RI + BOT_T
-OUTER_E = (_a ** 2 - (TIP_Z1 - OUTER_Z) ** 2) / (2 * _a)
-OUTER_R = _a - OUTER_E
-OUTER_C = (OUTER_Z, HOOK_Y - OUTER_E)
-BOTTOM_Y = OUTER_C[1] - OUTER_R   # lowest point of the hook = bottom of the back face
-
 
 def yz(face: Face | Sketch, x0: float, x1: float) -> Part:
     """Extrude a profile drawn in local (u, v) = (Z, Y) between X = x0 and X = x1."""
@@ -96,21 +123,23 @@ def yz(face: Face | Sketch, x0: float, x1: float) -> Part:
     return extrude(plane * face, x1 - x0)
 
 
-def body_profile() -> Sketch:
-    plate = Polygon((0, HOOK_Y), (PLATE_T_BOT, HOOK_Y), (PLATE_T_TOP, PLATE_TOP),
+def body_profile(h: HookShape) -> Sketch:
+    plate = Polygon((0, h.hook_y), (h.plate_t_bot, h.hook_y), (h.plate_t_top, PLATE_TOP),
                     (0, PLATE_TOP), align=None)
     plate = fillet(plate.vertices().filter_by(lambda v: v.Y > PLATE_TOP - 1e-6), TOP_R)
     big = 200
-    lower_half = Pos(big / 2, HOOK_Y - big / 2) * Rectangle(big, big)
-    outer = Pos(*OUTER_C) * Circle(OUTER_R) & lower_half
-    leg = Pos((TIP_Z0 + TIP_Z1) / 2, HOOK_Y + TIP_H / 2) * Rectangle(TIP_T, TIP_H)
-    leg += Pos((TIP_Z0 + TIP_Z1) / 2, HOOK_Y + TIP_H) * Circle(TIP_T / 2)
+    lower_half = Pos(big / 2, h.hook_y - big / 2) * Rectangle(big, big)
+    (oz, oy), r = h.outer
+    outer = Pos(oz, oy) * Circle(r) & lower_half
+    leg_z = (h.tip_z0 + h.tip_z1) / 2
+    leg = Pos(leg_z, h.hook_y + h.tip_h / 2) * Rectangle(h.tip_t, h.tip_h)
+    leg += Pos(leg_z, h.hook_y + h.tip_h) * Circle(h.tip_t / 2)
     # heel: the back face runs straight down to the hook's lowest point, where a flat
     # underside meets the outer arc tangentially
-    heel = Pos(OUTER_Z / 2, (BOTTOM_Y + HOOK_Y) / 2) * Rectangle(OUTER_Z, HOOK_Y - BOTTOM_Y)
-    prof = plate + outer + heel + leg - Pos(*INNER_C) * Circle(HOOK_RI)
+    heel = Pos(oz / 2, (h.bottom_y + h.hook_y) / 2) * Rectangle(oz, h.hook_y - h.bottom_y)
+    prof = plate + outer + heel + leg - Pos(*h.inner_c) * Circle(h.hook_ri)
     corner = prof.vertices().filter_by(lambda v: abs(v.X) < 1e-6).sort_by(Axis.Y)[0]
-    return fillet(corner, HEEL_R)
+    return fillet(corner, h.heel_r)
 
 
 def flats(z0: float, z1: float) -> Part:
@@ -150,8 +179,8 @@ def build_snap_rod() -> Part:
     return rod
 
 
-def build_hook() -> Part:
-    body = yz(body_profile(), 0, W)
+def build_hook(h: HookShape = LARGE) -> Part:
+    body = yz(body_profile(h), 0, h.w)
     body = chamfer(body.faces().sort_by(Axis.X)[0].edges(), BED_CHAMFER)
     body = fillet(body.faces().sort_by(Axis.X)[-1].edges(), TOP_FILLET)
     return body + build_lower_pin() + build_snap_rod()
@@ -179,33 +208,38 @@ def panel() -> Part:
     return p
 
 
-if __name__ == "__main__":
-    hook = build_hook()
-    report("shelf_pin_hook (model frame)", hook)
+def export_variant(name: str, h: HookShape, fig: int) -> None:
+    """Check, export (print orientation) and render one hook variant.
+    The preview images are labelled Fig. <fig> and Fig. <fig + 1>."""
+    hook = build_hook(h)
+    report(f"{name} (model frame)", hook)
     print(f"  snap shoulder at Z = {SHOULDER_Z:.2f}, rod end Z = {ROD_END_Z:.2f}, "
           f"slot root Z = {SLOT_ROOT_Z:.2f}")
     print(f"  barb reach = {SLOT_W / 2 + BARB_R:.2f} from axis (hole radius {HOLE_D / 2})")
-    print(f"  outer arc centre {OUTER_C[0]:.2f}, {OUTER_C[1]:.2f}  R = {OUTER_R:.2f}; "
-          f"back face reaches down to Y = {BOTTOM_Y:.2f} (corner R {HEEL_R})")
-    print(f"  seat bottom Y = {HOOK_Y - HOOK_RI:.2f}, tip top Y = {HOOK_Y + TIP_H + TIP_T / 2:.2f}, "
-          f"load arm from wall = {INNER_C[0]:.2f}")
+    print(f"  gap = {2 * h.hook_ri:.2f}, lip = {h.lip_h:.2f}, seat bottom Y = "
+          f"{h.hook_y - h.hook_ri:.2f}, back face down to Y = {h.bottom_y:.2f}, "
+          f"load arm from wall = {h.inner_c[0]:.2f}")
     printed = print_orientation(hook)
-    report("shelf_pin_hook (print orientation)", printed)
+    report(f"{name} (print orientation)", printed)
 
     out = ROOT / "exports"
-    export_stl(printed, str(out / "shelf_pin_hook.stl"))
-    export_step(printed, str(out / "shelf_pin_hook.step"))
+    export_stl(printed, str(out / f"{name}.stl"))
+    export_step(printed, str(out / f"{name}.step"))
 
     blue, light = (0.35, 0.55, 0.85), (0.8, 0.72, 0.6)
     parts = [(hook, blue, 1)]
-    render(str(out / "shelf_pin_hook.png"), [
-        ("Fig. 2a  Side profile (wall on the left)", 0, 90, parts),
-        ("Fig. 2b  Front 3/4", 25, 35, parts),
-        ("Fig. 2c  Snap tip close-up (barbs, slot)", 0, 90,
+    render(str(out / f"{name}.png"), [
+        (f"Fig. {fig}a  Side profile (wall on the left)", 0, 90, parts),
+        (f"Fig. {fig}b  Front 3/4", 25, 35, parts),
+        (f"Fig. {fig}c  Snap tip close-up (barbs, slot)", 0, 90,
          [(hook & Pos(ROD_X, PITCH, ROD_END_Z + 6) * Box(10, 10, 14), blue, 1)]),
-        ("Fig. 2d  Mounted, panel ghosted", 15, 60, parts + [(panel(), light, 0.25)]),
+        (f"Fig. {fig}d  Mounted, panel ghosted", 15, 60, parts + [(panel(), light, 0.25)]),
     ], figsize=(20, 7))
-    render(str(out / "shelf_pin_hook_print.png"), [
-        ("Fig. 3  Print orientation (bed = XY plane)", 35, -30, [(printed, blue, 1)]),
+    render(str(out / f"{name}_print.png"), [
+        (f"Fig. {fig + 1}  Print orientation (bed = XY plane)", 35, -30, [(printed, blue, 1)]),
     ], figsize=(8, 6))
     print("wrote", out)
+
+
+if __name__ == "__main__":
+    export_variant("shelf_pin_hook", LARGE, fig=4)
