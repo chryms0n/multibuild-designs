@@ -32,4 +32,4 @@ Each model script writes its STL/STEP files and a preview image (`<part>.png`) t
 | Part | Script | Print files |
 | --- | --- | --- |
 | Caliper holder (150 mm vernier caliper, one MultiBoard large hole + anti-rotation peg) | `models/multiboard/caliper_holder.py` | `exports/caliper_holder.stl`, `exports/caliper_holder_peg.stl` |
-| Shelf-pin wall hook (two 5 mm holes through a 36 mm panel, snap rod + pin, 20 mm J-hook) | `models/furniture/shelf_pin_hook.py` | `exports/shelf_pin_hook.stl` (already in print orientation) |
+| Shelf-pin wall hook (two 5 mm holes through a 36 mm panel, snap rod + pin, 16 mm wide J-hook with 25 mm gap for a ~10 kg backpack) | `models/furniture/shelf_pin_hook.py` | `exports/shelf_pin_hook.stl` (already in print orientation) |

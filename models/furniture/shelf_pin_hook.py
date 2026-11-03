@@ -5,9 +5,10 @@ Improves on the user's reference model (WallHook2.stl):
     and its two barbs spring open behind the panel so the hook cannot tilt out under
     load. To remove it, squeeze the barbs together from behind and pull.
   * The lower rod is a short plain locating pin. It takes the vertical load.
-  * The hook is a 12 mm wide J-shape (the reference is 5.8 mm). It is thickest where
-    the bending is highest and blends into the back plate. The back plate reaches
-    below the hook, so the panel pushes back lower down and the snap rod carries
+  * The hook is a 16 mm wide J-shape (the reference is 5.8 mm), sized for a loaded
+    backpack (~10 kg): 25 mm gap for a padded strap, 22 mm lip. It is thickest where
+    the bending is highest. The flat back face runs straight down to the bottom of
+    the hook, so the panel pushes back as low as possible and the snap rod carries
     less pull.
 
 Frame: X along the wall (part width), Y up, Z out of the wall. Lower rod axis at
@@ -31,11 +32,11 @@ from build123d import *  # noqa: E402
 
 from lib.preview import render  # noqa: E402
 
-# --- Furniture (all to be confirmed by the user's caliper) ---------------------
+# --- Furniture ------------------------------------------------------------------
 HOLE_D = 5.0        # source: user ("5 millimeter holes")
-PANEL_T = 36.0      # source: user ("furniture wall that is 3.6 centimeters deep"),
-                    # holes assumed to go all the way through the panel
-PITCH = 32.5        # source: rod centre spacing in the user's reference WallHook2.stl
+PANEL_T = 36.0      # source: user, confirmed: 36 mm panel, holes go all the way through
+PITCH = 32.5        # source: rod centre spacing in the user's reference WallHook2.stl;
+                    # user confirmed that spacing fits their holes
 
 # --- Rods -----------------------------------------------------------------------
 ROD_D = 4.7         # reference rods measure 4.66; 0.15 mm clearance per side
@@ -55,19 +56,21 @@ BARB_LEAD_L = 5.0   # lead-in ramp to the tip
 BARB_TIP_Y = 1.9    # ramp height at the very tip (from the rod axis)
 
 # --- Body -----------------------------------------------------------------------
-W = 12.0            # part width along X (print height)
+W = 16.0            # part width along X (print height)
 PLATE_T_TOP = 5.0   # back plate thickness at the top
-PLATE_T_BOT = 7.0   # ... and where the hook starts (plate front is tapered)
+PLATE_T_BOT = 9.0   # ... and where the hook starts (plate front is tapered)
 PLATE_TOP = PITCH + 6.5
 TOP_R = 2.5         # top corner radius of the plate (in profile)
-HOOK_Y = 3.0        # height of the hook's inner-arc centre (seat bottom = HOOK_Y - HOOK_RI)
-HOOK_RI = 10.0      # inner radius of the hook seat; gap plate-to-tip = 2 * HOOK_RI = 20 mm
-TIP_T = 5.5         # tip leg thickness
-BOT_T = 9.0         # hook thickness at the bottom
-TIP_H = 8.0         # tip top (round end centre) above HOOK_Y
+HOOK_Y = 3.5        # height of the hook's inner-arc centre (seat bottom = HOOK_Y - HOOK_RI)
+HOOK_RI = 12.5      # inner radius of the hook seat; gap plate-to-tip = 2 * HOOK_RI = 25 mm
+TIP_T = 6.0         # tip leg thickness
+BOT_T = 10.0        # hook thickness at the bottom
+LIP_H = 22.0        # tip top above the seat bottom
+TIP_H = LIP_H - HOOK_RI - TIP_T / 2   # tip round-end centre above HOOK_Y
 OUTER_SHIFT = 2.0   # outer arc centre shifted towards the wall -> thicker near the plate
-PIVOT_R = 2.0       # round-over where the hook's underside meets the back face
-EDGE_CHAMFER = 0.8  # on the two flat faces' outline (bed side and top side)
+HEEL_R = 4.0        # round-over of the bottom corner at the back face
+BED_CHAMFER = 1.2   # outline edges on the bed side (45 deg, prints without support)
+TOP_FILLET = 2.0    # outline edges on the top side (strap-friendly)
 
 # --- Derived ----------------------------------------------------------------------
 SHOULDER_Z = -(PANEL_T + SNAP_PLAY)
@@ -84,7 +87,7 @@ _a = HOOK_RI + BOT_T
 OUTER_E = (_a ** 2 - (TIP_Z1 - OUTER_Z) ** 2) / (2 * _a)
 OUTER_R = _a - OUTER_E
 OUTER_C = (OUTER_Z, HOOK_Y - OUTER_E)
-PIVOT_Y = OUTER_C[1] - (OUTER_R ** 2 - OUTER_Z ** 2) ** 0.5   # lowest point of the back face
+BOTTOM_Y = OUTER_C[1] - OUTER_R   # lowest point of the hook = bottom of the back face
 
 
 def yz(face: Face | Sketch, x0: float, x1: float) -> Part:
@@ -102,10 +105,12 @@ def body_profile() -> Sketch:
     outer = Pos(*OUTER_C) * Circle(OUTER_R) & lower_half
     leg = Pos((TIP_Z0 + TIP_Z1) / 2, HOOK_Y + TIP_H / 2) * Rectangle(TIP_T, TIP_H)
     leg += Pos((TIP_Z0 + TIP_Z1) / 2, HOOK_Y + TIP_H) * Circle(TIP_T / 2)
-    prof = plate + outer + leg - Pos(*INNER_C) * Circle(HOOK_RI)
-    # round the corner where the hook's underside meets the back face (the pivot)
-    pivot = prof.vertices().filter_by(lambda v: abs(v.X) < 1e-6).sort_by(Axis.Y)[0]
-    return fillet(pivot, PIVOT_R)
+    # heel: the back face runs straight down to the hook's lowest point, where a flat
+    # underside meets the outer arc tangentially
+    heel = Pos(OUTER_Z / 2, (BOTTOM_Y + HOOK_Y) / 2) * Rectangle(OUTER_Z, HOOK_Y - BOTTOM_Y)
+    prof = plate + outer + heel + leg - Pos(*INNER_C) * Circle(HOOK_RI)
+    corner = prof.vertices().filter_by(lambda v: abs(v.X) < 1e-6).sort_by(Axis.Y)[0]
+    return fillet(corner, HEEL_R)
 
 
 def flats(z0: float, z1: float) -> Part:
@@ -147,8 +152,8 @@ def build_snap_rod() -> Part:
 
 def build_hook() -> Part:
     body = yz(body_profile(), 0, W)
-    side_edges = body.faces().sort_by(Axis.X)[0].edges() + body.faces().sort_by(Axis.X)[-1].edges()
-    body = chamfer(side_edges, EDGE_CHAMFER)
+    body = chamfer(body.faces().sort_by(Axis.X)[0].edges(), BED_CHAMFER)
+    body = fillet(body.faces().sort_by(Axis.X)[-1].edges(), TOP_FILLET)
     return body + build_lower_pin() + build_snap_rod()
 
 
@@ -181,7 +186,9 @@ if __name__ == "__main__":
           f"slot root Z = {SLOT_ROOT_Z:.2f}")
     print(f"  barb reach = {SLOT_W / 2 + BARB_R:.2f} from axis (hole radius {HOLE_D / 2})")
     print(f"  outer arc centre {OUTER_C[0]:.2f}, {OUTER_C[1]:.2f}  R = {OUTER_R:.2f}; "
-          f"back face reaches down to Y = {PIVOT_Y:.2f}")
+          f"back face reaches down to Y = {BOTTOM_Y:.2f} (corner R {HEEL_R})")
+    print(f"  seat bottom Y = {HOOK_Y - HOOK_RI:.2f}, tip top Y = {HOOK_Y + TIP_H + TIP_T / 2:.2f}, "
+          f"load arm from wall = {INNER_C[0]:.2f}")
     printed = print_orientation(hook)
     report("shelf_pin_hook (print orientation)", printed)
 
