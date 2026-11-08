@@ -14,11 +14,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from shelf_pin_hook import LARGE, export_variant  # noqa: E402
-from dataclasses import replace  # noqa: E402
+from shelf_pin_hook import HookShape, export_variant  # noqa: E402
 
-SMALL = replace(LARGE, hook_ri=LARGE.hook_ri / 2, lip_h=LARGE.lip_h / 2,
-                tip_t=5.0, bot_t=7.0)
+# default plate and hook position (no tail); hook gap and lip are half the large hook's
+SMALL = HookShape(hook_ri=6.25, lip_h=11.0, tip_t=5.0, bot_t=7.0)
 
 if __name__ == "__main__":
     export_variant("shelf_pin_hook_small", SMALL, fig=6)

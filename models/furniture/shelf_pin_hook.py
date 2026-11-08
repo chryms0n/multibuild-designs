@@ -7,9 +7,9 @@ Improves on the user's reference model (WallHook2.stl):
   * The lower rod is a short plain locating pin. It takes the vertical load.
   * The hook is a 16 mm wide J-shape (the reference is 5.8 mm), sized for a loaded
     backpack (~10 kg): 25 mm gap for a padded strap, 22 mm lip. It is thickest where
-    the bending is highest. The flat back face runs straight down to the bottom of
-    the hook, so the panel pushes back as low as possible and the snap rod carries
-    less pull.
+    the bending is highest. The hook sits high on the plate, and the plate carries
+    on 11.5 mm below the hook (to 19 mm below the lower rod), so the panel pushes
+    back low down and the snap rod carries less pull.
 
 Frame: X along the wall (part width), Y up, Z out of the wall. Lower rod axis at
 Y = 0, back face of the plate (against the panel) on Z = 0, rods point into -Z.
@@ -82,6 +82,13 @@ class HookShape:
     lip_h: float = 22.0        # tip top above the seat bottom
     outer_shift: float = 2.0   # outer arc centre shifted towards the wall
     heel_r: float = 4.0        # round-over of the bottom corner at the back face
+    # Optional tail: the back plate continues below the hook down to this Y, so the
+    # hook can sit higher while the pivot on the panel stays low. None = no tail,
+    # the back face ends at the bottom of the hook.
+    plate_bottom: float | None = None
+    tail_t: float = 6.0        # tail thickness (Z)
+    tail_r: float = 4.0        # fillet where the hook's underside meets the tail
+    tail_end_r: float = 2.0    # tail's two bottom corners
 
     # derived, all as (Z, Y) in the side profile
     @property
@@ -116,7 +123,9 @@ class HookShape:
         return cy - r
 
 
-LARGE = HookShape()   # 25 mm gap, 22 mm lip: loaded backpack (~10 kg)
+# 25 mm gap, 22 mm lip: loaded backpack (~10 kg). The hook sits 11.5 mm higher than
+# the default (user request); the plate still reaches 19 mm below the lower rod.
+LARGE = HookShape(hook_y=15.0, plate_bottom=-19.0)
 
 # --- Derived (rods) ----------------------------------------------------------------
 SHOULDER_Z = -(PANEL_T + SNAP_PLAY)
@@ -144,8 +153,19 @@ def body_profile(h: HookShape) -> Sketch:
     # underside meets the outer arc tangentially
     heel = Pos(oz / 2, (h.bottom_y + h.hook_y) / 2) * Rectangle(oz, h.hook_y - h.bottom_y)
     prof = plate + outer + heel + leg - Pos(*h.inner_c) * Circle(h.hook_ri)
-    corner = prof.vertices().filter_by(lambda v: abs(v.X) < 1e-6).sort_by(Axis.Y)[0]
-    return fillet(corner, h.heel_r)
+    if h.plate_bottom is None or h.plate_bottom >= h.bottom_y - 1e-6:
+        corner = prof.vertices().filter_by(lambda v: abs(v.X) < 1e-6).sort_by(Axis.Y)[0]
+        return fillet(corner, h.heel_r)
+    # tail of the back plate below the hook
+    tail_h = h.bottom_y - h.plate_bottom
+    prof += Pos(h.tail_t / 2, h.plate_bottom + tail_h / 2) * Rectangle(h.tail_t, tail_h)
+
+    def at(z, y):
+        return prof.vertices().filter_by(lambda v: abs(v.X - z) < 1e-6 and abs(v.Y - y) < 1e-6)
+
+    prof = fillet(at(h.tail_t, h.bottom_y), h.tail_r)      # concave: hook underside / tail
+    prof = fillet(at(0, h.plate_bottom) + at(h.tail_t, h.plate_bottom), h.tail_end_r)
+    return prof
 
 
 def flats(z0: float, z1: float) -> Part:
@@ -223,7 +243,8 @@ def export_variant(name: str, h: HookShape, fig: int) -> None:
           f"slot root Z = {SLOT_ROOT_Z:.2f}")
     print(f"  barb reach = {SLOT_W / 2 + BARB_R:.2f} from axis (hole radius {HOLE_D / 2})")
     print(f"  gap = {2 * h.hook_ri:.2f}, lip = {h.lip_h:.2f}, seat bottom Y = "
-          f"{h.hook_y - h.hook_ri:.2f}, back face down to Y = {h.bottom_y:.2f}, "
+          f"{h.hook_y - h.hook_ri:.2f}, hook bottom Y = {h.bottom_y:.2f}, back face down to "
+          f"Y = {h.bottom_y if h.plate_bottom is None else min(h.plate_bottom, h.bottom_y):.2f}, "
           f"load arm from wall = {h.inner_c[0]:.2f}")
     printed = print_orientation(hook)
     report(f"{name} (print orientation)", printed)
@@ -248,4 +269,4 @@ def export_variant(name: str, h: HookShape, fig: int) -> None:
 
 
 if __name__ == "__main__":
-    export_variant("shelf_pin_hook", LARGE, fig=4)
+    export_variant("shelf_pin_hook", LARGE, fig=8)
